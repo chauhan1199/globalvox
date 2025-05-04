@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Encrypted Number Submission</title>
+  <script>
+    // Check if Web Crypto API is available
+    if (!window.crypto || !window.crypto.subtle) {
+      alert('This application requires a secure context (HTTPS) or localhost to work properly.');
+    }
+  </script>
+</head>
+<body>
+  <button id="generate">Generate Key</button>
+  <br><br>
+  <input type="number" id="number" step="0.01" min="0.01" max="99.99" placeholder="Enter number" />
+  <button id="submit">Submit Number</button>
+  <pre id="result"></pre>
+
+  <script>
+    let publicKey, uuid;
+
+    document.getElementById('generate').onclick = async () => {
+      try {
+        if (!window.crypto || !window.crypto.subtle) {
+          throw new Error('Web Crypto API is not available. Please use HTTPS or localhost.');
+        }
+
+        const res = await fetch('http://localhost:3000/generate-key', { method: 'POST' });
+        const data = await res.json();
+        uuid = data.uuid;
+        publicKey = await window.crypto.subtle.importKey(
+          'spki',
+          str2ab(atob(data.publicKey.replace(/-----[^-]+-----/g, '').replace(/\n/g, ''))),
+          {
+            name: 'RSA-OAEP',
+            hash: 'SHA-256'
+          },
+          false,
+          ['encrypt']
+        );
+        alert('Key generated!');
+      } catch (error) {
+        console.error('Error generating key:', error);
+        alert('Error generating key: ' + error.message);
+      }
+    };
+
+    document.getElementById('submit').onclick = async () => {
+      try {
+        const val = document.getElementById('number').value;
+        if (!publicKey || !uuid || val < 0.01 || val > 99.99) {
+          alert('Invalid or missing input/key');
+          return;
+        }
+
+        const enc = await window.crypto.subtle.encrypt(
+          { name: 'RSA-OAEP' },
+          publicKey,
+          new TextEncoder().encode(val.toString())
+        );
+
+        const encryptedValue = btoa(String.fromCharCode(...new Uint8Array(enc)));
+        const res = await fetch('http://localhost:3000/submit', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ uuid, encryptedValue })
+        });
+
+        const data = await res.json();
+        document.getElementById('result').textContent = JSON.stringify(data, null, 2);
+      } catch (error) {
+        console.error('Error submitting number:', error);
+        alert('Error submitting number: ' + error.message);
+      }
+    };
+
+    function str2ab(str) {
+      const binary = new Uint8Array(str.length);
+      for (let i = 0; i < str.length; i++) binary[i] = str.charCodeAt(i);
+      return binary.buffer;
+    }
+  </script>
+</body>
+</html>
